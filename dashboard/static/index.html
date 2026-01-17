@@ -454,7 +454,11 @@
         // Simple SVG chart renderer
         function createSVGChart(svgId, data, labels, color, maxValue = null) {
             const svg = document.getElementById(svgId);
-            if (!svg || !data || data.length === 0) return;
+            if (!svg || !data || data.length === 0 || !labels || labels.length === 0) return;
+            if (data.length !== labels.length) {
+                console.warn('Data and labels length mismatch for chart:', svgId);
+                return;
+            }
 
             const width = svg.clientWidth || 600;
             const height = svg.clientHeight || 250;
@@ -607,6 +611,10 @@
         }
 
         function renderMetrics(data) {
+            if (!data || !data.metrics) {
+                console.error('Invalid data received:', data);
+                return;
+            }
             const metrics = data.metrics;
             const html = `
                 <div class="card">
@@ -740,17 +748,22 @@
                         btn.innerHTML = '<span>▶</span> Run Now';
                     }, 500);
                 } else {
-                    alert('Monitor script failed. Check console for details.');
                     console.error('Monitor output:', result);
+                    showNotification('Monitor script failed. Check console for details.', 'error');
                     btn.disabled = false;
                     btn.innerHTML = '<span>▶</span> Run Now';
                 }
             } catch (error) {
                 console.error('Error running monitor:', error);
-                alert('Failed to run monitor script');
+                showNotification('Failed to run monitor script', 'error');
                 btn.disabled = false;
                 btn.innerHTML = '<span>▶</span> Run Now';
             }
+        }
+
+        function showNotification(message, type = 'info') {
+            // Simple console notification for now (can be enhanced with toast notifications)
+            console.log(`[${type.toUpperCase()}] ${message}`);
         }
 
         function updateCountdown() {

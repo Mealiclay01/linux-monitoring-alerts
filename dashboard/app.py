@@ -17,6 +17,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
+# Constants
+MAX_STDOUT_CHARS = 2000
+MAX_STDERR_CHARS = 1000
+
 # Get project paths
 CURRENT_DIR = Path(__file__).parent
 PROJECT_DIR = CURRENT_DIR.parent
@@ -31,9 +35,10 @@ app = FastAPI(
 )
 
 # Enable CORS for local development
+# NOTE: In production, restrict origins to specific domains
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # TODO: Change to specific origins in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -167,8 +172,8 @@ async def run_monitor():
         return {
             "success": process.returncode == 0,
             "returncode": process.returncode,
-            "stdout": stdout_text[-2000:] if len(stdout_text) > 2000 else stdout_text,  # Last 2000 chars
-            "stderr": stderr_text[-1000:] if len(stderr_text) > 1000 else stderr_text,  # Last 1000 chars
+            "stdout": stdout_text[-MAX_STDOUT_CHARS:] if len(stdout_text) > MAX_STDOUT_CHARS else stdout_text,
+            "stderr": stderr_text[-MAX_STDERR_CHARS:] if len(stderr_text) > MAX_STDERR_CHARS else stderr_text,
             "latest_report": latest_filename,
             "timestamp": datetime.now().isoformat()
         }
