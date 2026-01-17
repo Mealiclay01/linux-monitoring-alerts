@@ -221,7 +221,7 @@ def generate_html_report(json_file, html_file):
             html_content += f"""
         <div class="service">
             <span class="service-name">{name_escaped}</span>
-            <span class="service-status {status_escaped}">{status_escaped.upper()}</span>
+            <span class="service-status {status}">{status_escaped.upper()}</span>
         </div>
 """
     else:
@@ -246,7 +246,7 @@ def generate_html_report(json_file, html_file):
             alert_type_escaped = html.escape(alert_type)
             message_escaped = html.escape(message)
             html_content += f"""
-        <div class="alert {severity_escaped}">
+        <div class="alert {severity}">
             <div class="alert-type">{severity_escaped}: {alert_type_escaped}</div>
             <div>{message_escaped}</div>
         </div>
