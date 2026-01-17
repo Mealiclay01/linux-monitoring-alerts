@@ -1,0 +1,28 @@
+[Unit]
+Description=Linux Monitoring and Alerting Service
+Documentation=https://github.com/Mealiclay01/linux-monitoring-alerts
+After=network.target
+
+[Service]
+Type=oneshot
+# Set the path to your installation directory
+WorkingDirectory=/opt/linux-monitoring-alerts
+ExecStart=/opt/linux-monitoring-alerts/scripts/monitor.sh
+
+# Environment variables for Telegram alerts (optional)
+# You can also set these in /etc/environment or create a separate env file
+# EnvironmentFile=/etc/linux-monitoring-alerts/telegram.env
+# Environment="TELEGRAM_BOT_TOKEN=your_bot_token_here"
+# Environment="TELEGRAM_CHAT_ID=your_chat_id_here"
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=linux-monitoring
+
+[Install]
+WantedBy=multi-user.target
