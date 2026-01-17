@@ -18,6 +18,12 @@ OUTPUT_DIR="${PROJECT_DIR}/output"
 # Ensure output directory exists
 mkdir -p "$OUTPUT_DIR"
 
+# Detect if systemd is available
+SYSTEMD_AVAILABLE=false
+if systemctl --version >/dev/null 2>&1 && systemctl is-system-running >/dev/null 2>&1; then
+    SYSTEMD_AVAILABLE=true
+fi
+
 # Timestamp for report
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 JSON_REPORT="${OUTPUT_DIR}/report_${TIMESTAMP}.json"
@@ -80,18 +86,37 @@ check_service_status() {
     local status="unknown"
     local active="unknown"
     
-    # Check if service unit file exists (avoid SIGPIPE with systemctl cat)
-    if systemctl cat "${service}.service" >/dev/null 2>&1; then
-        if systemctl is-active --quiet "$service" 2>/dev/null; then
-            active="active"
-            status="running"
+    if [[ "$SYSTEMD_AVAILABLE" == "true" ]]; then
+        # Use systemd when available (avoid SIGPIPE with systemctl cat)
+        if systemctl cat "${service}.service" >/dev/null 2>&1; then
+            if systemctl is-active --quiet "$service" 2>/dev/null; then
+                active="active"
+                status="running"
+            else
+                active="inactive"
+                status="stopped"
+            fi
         else
-            active="inactive"
-            status="stopped"
+            status="not_installed"
+            active="not_installed"
         fi
     else
-        status="not_installed"
-        active="not_installed"
+        # Fallback to /etc/init.d when systemd is not available
+        if [[ -f "/etc/init.d/$service" ]]; then
+            # Service script exists, try to determine if it's running
+            # This is a best-effort check since we can't reliably determine status
+            # without systemd or service manager
+            if pgrep -f "$service" >/dev/null 2>&1; then
+                status="running"
+                active="active"
+            else
+                status="stopped"
+                active="inactive"
+            fi
+        else
+            status="not_installed"
+            active="not_installed"
+        fi
     fi
     
     echo "${status}|${active}"
