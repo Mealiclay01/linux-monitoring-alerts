@@ -24,7 +24,6 @@ def generate_html_report(json_file, html_file):
     
     # Determine overall status
     overall_status = "OK" if len(alerts) == 0 else "WARNING"
-    status_color = "green" if overall_status == "OK" else "red"
     
     # Generate HTML
     html_content = f"""<!DOCTYPE html>

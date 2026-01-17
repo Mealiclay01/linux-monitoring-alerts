@@ -2,6 +2,8 @@
 # Test script to demonstrate the Linux Monitoring and Alerting Tool
 # This script will run the monitor with example configuration
 
+set -euo pipefail
+
 echo "===== Linux Monitoring and Alerting Tool - Test Demo ====="
 echo ""
 echo "This test will:"

@@ -137,6 +137,24 @@ $alerts
 EOF
 }
 
+# Function to URL encode a string
+url_encode() {
+    local string="$1"
+    local strlen=${#string}
+    local encoded=""
+    local pos c o
+    
+    for (( pos=0 ; pos<strlen ; pos++ )); do
+        c=${string:$pos:1}
+        case "$c" in
+            [-_.~a-zA-Z0-9] ) o="${c}" ;;
+            * ) printf -v o '%%%02x' "'$c"
+        esac
+        encoded+="${o}"
+    done
+    echo "${encoded}"
+}
+
 # Function to send Telegram alert
 send_telegram_alert() {
     local message=$1
@@ -149,10 +167,11 @@ send_telegram_alert() {
     fi
     
     local url="https://api.telegram.org/bot${bot_token}/sendMessage"
+    local encoded_message=$(url_encode "$message")
     
     curl -s -X POST "$url" \
         -d "chat_id=${chat_id}" \
-        -d "text=${message}" \
+        -d "text=${encoded_message}" \
         -d "parse_mode=HTML" > /dev/null || {
         echo "Warning: Failed to send Telegram alert" >&2
         return 1
@@ -311,11 +330,13 @@ main() {
     # Send Telegram alerts
     if [ ${#alert_messages[@]} -gt 0 ]; then
         echo "Sending Telegram alerts..."
-        combined_message="<b>🚨 Linux Monitoring Alert - $(hostname)</b>%0A%0A"
+        combined_message="<b>🚨 Linux Monitoring Alert - $(hostname)</b>"
+        combined_message+=$'\n\n'
         for msg in "${alert_messages[@]}"; do
-            combined_message="${combined_message}${msg}%0A"
+            combined_message+="${msg}"
+            combined_message+=$'\n'
         done
-        combined_message="${combined_message}%0ATimestamp: $(date)"
+        combined_message+=$'\n'"Timestamp: $(date)"
         
         send_telegram_alert "$combined_message"
     else
