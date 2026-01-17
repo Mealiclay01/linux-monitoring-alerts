@@ -18,9 +18,9 @@ OUTPUT_DIR="${PROJECT_DIR}/output"
 # Ensure output directory exists
 mkdir -p "$OUTPUT_DIR"
 
-# Detect if systemd is available
+# Detect if systemd is available (check for systemd runtime directory)
 SYSTEMD_AVAILABLE=false
-if systemctl --version >/dev/null 2>&1 && systemctl is-system-running >/dev/null 2>&1; then
+if [[ -d "/run/systemd/system" ]]; then
     SYSTEMD_AVAILABLE=true
 fi
 
@@ -80,6 +80,18 @@ collect_uptime() {
     echo "$uptime_info"
 }
 
+# Function to escape strings for JSON
+json_escape() {
+    local string="$1"
+    # Escape backslashes, quotes, and control characters
+    string="${string//\\/\\\\}"  # Escape backslashes
+    string="${string//\"/\\\"}"  # Escape quotes
+    string="${string//$'\n'/\\n}"  # Escape newlines
+    string="${string//$'\r'/\\r}"  # Escape carriage returns
+    string="${string//$'\t'/\\t}"  # Escape tabs
+    echo "$string"
+}
+
 # Function to check systemd service status
 check_service_status() {
     local service=$1
@@ -101,22 +113,10 @@ check_service_status() {
             active="not_installed"
         fi
     else
-        # Fallback to /etc/init.d when systemd is not available
-        if [[ -f "/etc/init.d/$service" ]]; then
-            # Service script exists, try to determine if it's running
-            # This is a best-effort check since we can't reliably determine status
-            # without systemd or service manager
-            if pgrep -f "$service" >/dev/null 2>&1; then
-                status="running"
-                active="active"
-            else
-                status="stopped"
-                active="inactive"
-            fi
-        else
-            status="not_installed"
-            active="not_installed"
-        fi
+        # When systemd is not available, mark services as unknown
+        # to avoid false alerts in containers/Codespaces
+        status="unknown"
+        active="unknown"
     fi
     
     echo "${status}|${active}"
@@ -131,10 +131,15 @@ generate_json_report() {
     local services_status=$5
     local alerts=$6
     
+    # Escape JSON strings
+    local hostname_escaped=$(json_escape "$(hostname)")
+    local uptime_escaped=$(json_escape "$uptime_info")
+    local timestamp_escaped=$(json_escape "$(date -Iseconds)")
+    
     cat > "$JSON_REPORT" <<EOF
 {
-  "timestamp": "$(date -Iseconds)",
-  "hostname": "$(hostname)",
+  "timestamp": "$timestamp_escaped",
+  "hostname": "$hostname_escaped",
   "metrics": {
     "disk_usage": {
       "value": $disk_usage,
@@ -149,7 +154,7 @@ generate_json_report() {
       "1min": $load_avg
     },
     "uptime": {
-      "value": "$uptime_info"
+      "value": "$uptime_escaped"
     }
   },
   "services": [
@@ -221,9 +226,12 @@ main() {
             services_json="${services_json},"
         fi
         
+        # Escape service name for JSON
+        local service_escaped=$(json_escape "$service")
+        
         services_json="${services_json}
     {
-      \"name\": \"$service\",
+      \"name\": \"$service_escaped\",
       \"status\": \"$status\",
       \"active\": \"$active\"
     }"
@@ -293,15 +301,19 @@ main() {
     }"
     fi
     
-    # Check for stopped services
+    # Check for stopped services (skip unknown and not_installed)
     for service in $SERVICES_LIST; do
         service_info=$(check_service_status "$service")
         status=$(echo "$service_info" | cut -d'|' -f1)
         
-        if [[ "$status" != "running" ]] && [[ "$status" != "not_installed" ]]; then
+        # Only alert for stopped services, skip unknown (no systemd) and not_installed
+        if [[ "$status" == "stopped" ]]; then
             alert_msg="⚠️ ALERT: Service $service is $status"
             echo "$alert_msg"
             alert_messages+=("$alert_msg")
+            
+            # Escape service name for JSON
+            local service_escaped=$(json_escape "$service")
             
             if [ "$first_alert" = true ]; then
                 first_alert=false
@@ -313,7 +325,7 @@ main() {
       \"type\": \"service_down\",
       \"severity\": \"critical\",
       \"message\": \"Service $service is $status\",
-      \"service\": \"$service\"
+      \"service\": \"$service_escaped\"
     }"
         fi
     done
