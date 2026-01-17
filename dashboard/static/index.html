@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Linux Monitoring Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-card: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border-color: #475569;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --info: #3b82f6;
+            --spacing: 1.5rem;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: var(--spacing);
+        }
+
+        header {
+            background: var(--bg-secondary);
+            padding: var(--spacing);
+            margin-bottom: calc(var(--spacing) * 2);
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--success);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 0.65rem 1.25rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: var(--info);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border-color);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: var(--spacing);
+            margin-bottom: calc(var(--spacing) * 2);
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: var(--spacing);
+            border: 1px solid var(--border-color);
+        }
+
+        .card-title {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.75rem;
+        }
+
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+
+        .metric-label {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge-success {
+            background: rgba(34, 197, 94, 0.15);
+            color: var(--success);
+        }
+
+        .badge-warning {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--warning);
+        }
+
+        .badge-error {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--error);
+        }
+
+        .badge-unknown {
+            background: rgba(148, 163, 184, 0.15);
+            color: var(--text-secondary);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            text-align: left;
+            padding: 0.75rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        td {
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        .alert-item {
+            padding: 1rem;
+            background: var(--bg-card);
+            border-radius: 6px;
+            margin-bottom: 0.75rem;
+            border-left: 3px solid var(--warning);
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+        }
+
+        .alert-item.critical {
+            border-left-color: var(--error);
+        }
+
+        .alert-content {
+            flex: 1;
+        }
+
+        .alert-type {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            margin-bottom: 0.25rem;
+        }
+
+        .alert-message {
+            font-size: 0.95rem;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+        }
+
+        .spinner {
+            border: 3px solid var(--border-color);
+            border-top: 3px solid var(--info);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .last-updated {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 1rem;
+            background: var(--bg-card);
+            border-radius: 6px;
+            padding: 1rem;
+        }
+
+        .simple-chart {
+            width: 100%;
+            height: 100%;
+        }
+
+        .chart-line {
+            fill: none;
+            stroke-width: 2;
+        }
+
+        .chart-area {
+            opacity: 0.2;
+        }
+
+        .chart-point {
+            r: 4;
+        }
+
+        .chart-axis {
+            stroke: var(--border-color);
+            stroke-width: 1;
+        }
+
+        .chart-label {
+            fill: var(--text-secondary);
+            font-size: 12px;
+        }
+
+        .section {
+            margin-bottom: calc(var(--spacing) * 2);
+        }
+
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: var(--spacing);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .auto-refresh-status {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: var(--bg-card);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 0.5rem;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--info);
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            .metric-value {
+                font-size: 2rem;
+            }
+
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div>
+                <h1>
+                    <span class="status-indicator"></span>
+                    Linux Monitoring Dashboard
+                </h1>
+                <div class="auto-refresh-status" id="refreshStatus">
+                    <span>Auto-refresh: <strong>ON</strong></span>
+                    <span id="countdown"></span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="btn-primary" onclick="runMonitorNow()" id="runBtn">
+                    <span>▶</span> Run Now
+                </button>
+                <button class="btn-secondary" onclick="refreshData()">
+                    <span>🔄</span> Refresh
+                </button>
+            </div>
+        </header>
+
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Loading monitoring data...</p>
+        </div>
+
+        <div id="content" style="display: none;">
+            <div class="last-updated" id="lastUpdated"></div>
+
+            <!-- Metrics Grid -->
+            <div class="grid" id="metricsGrid"></div>
+
+            <!-- Services Section -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span>⚙️</span> Services Status
+                </h2>
+                <div class="card">
+                    <div id="servicesTable"></div>
+                </div>
+            </div>
+
+            <!-- Alerts Section -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span>⚠️</span> Active Alerts
+                </h2>
+                <div id="alertsList"></div>
+            </div>
+
+            <!-- History Charts -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span>📊</span> Historical Trends
+                </h2>
+                <div class="grid">
+                    <div class="card">
+                        <div class="card-title">Disk Usage Over Time</div>
+                        <div class="chart-container">
+                            <svg id="diskChart" class="simple-chart"></svg>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">RAM Usage Over Time</div>
+                        <div class="chart-container">
+                            <svg id="ramChart" class="simple-chart"></svg>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Load Average Over Time</div>
+                        <div class="chart-container">
+                            <svg id="loadChart" class="simple-chart"></svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let autoRefreshInterval;
+        let countdownInterval;
+        let nextRefreshTime = Date.now() + 5000;
+        const REFRESH_INTERVAL = 5000; // 5 seconds
+
+        // Simple SVG chart renderer
+        function createSVGChart(svgId, data, labels, color, maxValue = null) {
+            const svg = document.getElementById(svgId);
+            if (!svg || !data || data.length === 0) return;
+
+            const width = svg.clientWidth || 600;
+            const height = svg.clientHeight || 250;
+            const padding = { top: 20, right: 20, bottom: 40, left: 50 };
+            const chartWidth = width - padding.left - padding.right;
+            const chartHeight = height - padding.top - padding.bottom;
+
+            // Clear previous content
+            svg.innerHTML = '';
+            svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+
+            // Find max value
+            const max = maxValue || Math.max(...data, 1);
+            const min = 0;
+
+            // Create points
+            const points = data.map((val, i) => {
+                const x = padding.left + (i / (data.length - 1 || 1)) * chartWidth;
+                const y = padding.top + chartHeight - ((val - min) / (max - min)) * chartHeight;
+                return { x, y, val };
+            });
+
+            // Create gradient area path
+            const areaPath = `
+                M ${points[0].x} ${padding.top + chartHeight}
+                ${points.map(p => `L ${p.x} ${p.y}`).join(' ')}
+                L ${points[points.length - 1].x} ${padding.top + chartHeight}
+                Z
+            `;
+
+            // Create line path
+            const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+
+            // Draw gradient area
+            const area = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            area.setAttribute('d', areaPath);
+            area.setAttribute('fill', color);
+            area.setAttribute('class', 'chart-area');
+            svg.appendChild(area);
+
+            // Draw line
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            line.setAttribute('d', linePath);
+            line.setAttribute('stroke', color);
+            line.setAttribute('class', 'chart-line');
+            svg.appendChild(line);
+
+            // Draw points
+            points.forEach((p, i) => {
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', p.x);
+                circle.setAttribute('cy', p.y);
+                circle.setAttribute('fill', color);
+                circle.setAttribute('class', 'chart-point');
+                svg.appendChild(circle);
+
+                // Add hover title
+                const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+                title.textContent = `${labels[i]}: ${p.val.toFixed(2)}`;
+                circle.appendChild(title);
+            });
+
+            // Draw Y axis
+            const yAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            yAxis.setAttribute('x1', padding.left);
+            yAxis.setAttribute('y1', padding.top);
+            yAxis.setAttribute('x2', padding.left);
+            yAxis.setAttribute('y2', padding.top + chartHeight);
+            yAxis.setAttribute('class', 'chart-axis');
+            svg.appendChild(yAxis);
+
+            // Draw X axis
+            const xAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            xAxis.setAttribute('x1', padding.left);
+            xAxis.setAttribute('y1', padding.top + chartHeight);
+            xAxis.setAttribute('x2', padding.left + chartWidth);
+            xAxis.setAttribute('y2', padding.top + chartHeight);
+            xAxis.setAttribute('class', 'chart-axis');
+            svg.appendChild(xAxis);
+
+            // Add Y axis labels
+            for (let i = 0; i <= 4; i++) {
+                const val = min + (max - min) * (i / 4);
+                const y = padding.top + chartHeight - (i / 4) * chartHeight;
+                
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', padding.left - 10);
+                text.setAttribute('y', y + 4);
+                text.setAttribute('text-anchor', 'end');
+                text.setAttribute('class', 'chart-label');
+                text.textContent = val.toFixed(1);
+                svg.appendChild(text);
+            }
+
+            // Add X axis labels (show every nth label to avoid crowding)
+            const labelStep = Math.max(1, Math.floor(labels.length / 6));
+            labels.forEach((label, i) => {
+                if (i % labelStep === 0 || i === labels.length - 1) {
+                    const x = points[i].x;
+                    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    text.setAttribute('x', x);
+                    text.setAttribute('y', padding.top + chartHeight + 20);
+                    text.setAttribute('text-anchor', 'middle');
+                    text.setAttribute('class', 'chart-label');
+                    text.setAttribute('transform', `rotate(-45, ${x}, ${padding.top + chartHeight + 20})`);
+                    text.textContent = label;
+                    svg.appendChild(text);
+                }
+            });
+        }
+
+        function updateCharts(history) {
+            if (!history || history.length === 0) return;
+
+            // Sort by timestamp (oldest first for chart)
+            const sorted = [...history].reverse();
+
+            // Extract data
+            const labels = sorted.map(r => {
+                const date = new Date(r.timestamp);
+                return date.toLocaleTimeString();
+            });
+
+            const diskData = sorted.map(r => r.metrics?.disk_usage?.value || 0);
+            const ramData = sorted.map(r => r.metrics?.ram_usage?.value || 0);
+            const loadData = sorted.map(r => r.metrics?.load_average?.['1min'] || 0);
+
+            // Update charts
+            createSVGChart('diskChart', diskData, labels, '#f59e0b', 100);
+            createSVGChart('ramChart', ramData, labels, '#3b82f6', 100);
+            createSVGChart('loadChart', loadData, labels, '#22c55e');
+        }
+
+        function getStatusBadge(status) {
+            const badges = {
+                'running': '<span class="badge badge-success">Running</span>',
+                'stopped': '<span class="badge badge-error">Stopped</span>',
+                'not_installed': '<span class="badge badge-warning">Not Installed</span>',
+                'unknown': '<span class="badge badge-unknown">Unknown</span>'
+            };
+            return badges[status] || badges['unknown'];
+        }
+
+        function getSeverityBadge(severity) {
+            const badges = {
+                'critical': '<span class="badge badge-error">Critical</span>',
+                'warning': '<span class="badge badge-warning">Warning</span>'
+            };
+            return badges[severity] || badges['warning'];
+        }
+
+        function renderMetrics(data) {
+            const metrics = data.metrics;
+            const html = `
+                <div class="card">
+                    <div class="card-title">Disk Usage</div>
+                    <div class="metric-value" style="color: ${metrics.disk_usage.value > 80 ? 'var(--error)' : 'var(--success)'}">
+                        ${metrics.disk_usage.value}%
+                    </div>
+                    <div class="metric-label">${metrics.disk_usage.filesystem}</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">RAM Usage</div>
+                    <div class="metric-value" style="color: ${metrics.ram_usage.value > 85 ? 'var(--error)' : 'var(--success)'}">
+                        ${metrics.ram_usage.value}%
+                    </div>
+                    <div class="metric-label">Memory utilization</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">Load Average</div>
+                    <div class="metric-value" style="color: ${metrics.load_average['1min'] > 4.0 ? 'var(--error)' : 'var(--success)'}">
+                        ${metrics.load_average['1min'].toFixed(2)}
+                    </div>
+                    <div class="metric-label">1 minute average</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">System Uptime</div>
+                    <div class="metric-value" style="font-size: 1.5rem;">
+                        ${metrics.uptime.value}
+                    </div>
+                    <div class="metric-label">${data.hostname}</div>
+                </div>
+            `;
+            document.getElementById('metricsGrid').innerHTML = html;
+        }
+
+        function renderServices(services) {
+            if (!services || services.length === 0) {
+                document.getElementById('servicesTable').innerHTML = '<div class="empty-state"><p>No services configured</p></div>';
+                return;
+            }
+
+            let html = '<table><thead><tr><th>Service Name</th><th>Status</th><th>State</th></tr></thead><tbody>';
+            services.forEach(service => {
+                html += `
+                    <tr>
+                        <td><strong>${service.name}</strong></td>
+                        <td>${getStatusBadge(service.status)}</td>
+                        <td>${service.active}</td>
+                    </tr>
+                `;
+            });
+            html += '</tbody></table>';
+            document.getElementById('servicesTable').innerHTML = html;
+        }
+
+        function renderAlerts(alerts) {
+            if (!alerts || alerts.length === 0) {
+                document.getElementById('alertsList').innerHTML = '<div class="empty-state">✅ <p>No active alerts</p></div>';
+                return;
+            }
+
+            let html = '';
+            alerts.forEach(alert => {
+                html += `
+                    <div class="alert-item ${alert.severity}">
+                        <div class="alert-content">
+                            <div class="alert-type">${alert.type.replace('_', ' ')}</div>
+                            <div class="alert-message">${alert.message}</div>
+                        </div>
+                        ${getSeverityBadge(alert.severity)}
+                    </div>
+                `;
+            });
+            document.getElementById('alertsList').innerHTML = html;
+        }
+
+        async function loadLatestData() {
+            try {
+                const response = await fetch('/api/latest');
+                if (!response.ok) throw new Error('Failed to fetch latest data');
+                const data = await response.json();
+
+                renderMetrics(data);
+                renderServices(data.services);
+                renderAlerts(data.alerts);
+
+                const date = new Date(data.timestamp);
+                document.getElementById('lastUpdated').textContent = `Last updated: ${date.toLocaleString()}`;
+                
+                return data;
+            } catch (error) {
+                console.error('Error loading latest data:', error);
+                throw error;
+            }
+        }
+
+        async function loadHistory() {
+            try {
+                const response = await fetch('/api/history?limit=20');
+                if (!response.ok) throw new Error('Failed to fetch history');
+                const data = await response.json();
+                
+                updateCharts(data.reports);
+            } catch (error) {
+                console.error('Error loading history:', error);
+            }
+        }
+
+        async function refreshData() {
+            try {
+                await Promise.all([loadLatestData(), loadHistory()]);
+                resetRefreshTimer();
+            } catch (error) {
+                console.error('Error refreshing data:', error);
+            }
+        }
+
+        async function runMonitorNow() {
+            const btn = document.getElementById('runBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span>⏳</span> Running...';
+
+            try {
+                const response = await fetch('/api/run', { method: 'POST' });
+                const result = await response.json();
+
+                if (result.success) {
+                    // Wait a moment for file to be written, then refresh
+                    setTimeout(async () => {
+                        await refreshData();
+                        btn.disabled = false;
+                        btn.innerHTML = '<span>▶</span> Run Now';
+                    }, 500);
+                } else {
+                    alert('Monitor script failed. Check console for details.');
+                    console.error('Monitor output:', result);
+                    btn.disabled = false;
+                    btn.innerHTML = '<span>▶</span> Run Now';
+                }
+            } catch (error) {
+                console.error('Error running monitor:', error);
+                alert('Failed to run monitor script');
+                btn.disabled = false;
+                btn.innerHTML = '<span>▶</span> Run Now';
+            }
+        }
+
+        function updateCountdown() {
+            const remaining = Math.max(0, nextRefreshTime - Date.now());
+            const seconds = Math.ceil(remaining / 1000);
+            document.getElementById('countdown').textContent = `Next refresh in ${seconds}s`;
+        }
+
+        function resetRefreshTimer() {
+            nextRefreshTime = Date.now() + REFRESH_INTERVAL;
+        }
+
+        function startAutoRefresh() {
+            // Clear any existing intervals
+            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+            if (countdownInterval) clearInterval(countdownInterval);
+
+            // Auto refresh every 5 seconds
+            autoRefreshInterval = setInterval(refreshData, REFRESH_INTERVAL);
+            
+            // Update countdown every 100ms
+            countdownInterval = setInterval(updateCountdown, 100);
+            
+            resetRefreshTimer();
+        }
+
+        // Initialize on page load
+        async function init() {
+            try {
+                await refreshData();
+                
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('content').style.display = 'block';
+                
+                startAutoRefresh();
+            } catch (error) {
+                console.error('Initialization error:', error);
+                document.getElementById('loading').innerHTML = '<p style="color: var(--error);">Failed to load monitoring data. Please check if the API is running.</p>';
+            }
+        }
+
+        // Start when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    </script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 # Linux Monitoring and Alerting Tool
 
-A comprehensive Linux server monitoring and alerting tool built with Bash scripts. Monitors system metrics, checks service status, generates reports, and sends alerts via Telegram.
+A comprehensive Linux server monitoring and alerting tool built with Bash scripts. Monitors system metrics, checks service status, generates reports, and sends alerts via Telegram. **Now with a modern web dashboard!**
 
 ## Features
 
@@ -13,6 +13,17 @@ A comprehensive Linux server monitoring and alerting tool built with Bash script
 - **Service Monitoring**
   - Monitor systemd services (SSH, Nginx, MySQL, etc.)
   - Configurable service list
+  - Graceful handling when systemd is unavailable (containers/Codespaces)
+  
+- **Web Dashboard** 🎨 **NEW!**
+  - Modern, responsive UI with dark mode
+  - Real-time metrics display
+  - Service status with color-coded badges
+  - Alert monitoring with severity levels
+  - Historical trend charts (disk, RAM, load average)
+  - Auto-refresh every 5 seconds
+  - Manual refresh and "Run Now" buttons
+  - REST API for programmatic access
   
 - **Reporting**
   - JSON reports saved to `output/` directory
@@ -29,11 +40,11 @@ A comprehensive Linux server monitoring and alerting tool built with Bash script
 
 ## Requirements
 
-- Linux system with systemd
+- Linux system (systemd optional - works in containers)
 - Bash 4.0+
 - Basic utilities: `df`, `free`, `uptime`, `awk`
 - `curl` (for Telegram alerts)
-- Python 3 (optional, for HTML report generation)
+- Python 3.8+ (for HTML reports and web dashboard)
 
 ## Installation
 
@@ -113,6 +124,46 @@ sudo systemctl start linux-monitoring.timer
 ```
 
 ## Usage
+
+### Web Dashboard (Recommended) 🎨
+
+The easiest way to monitor your system is through the web dashboard:
+
+1. **Install Python dependencies:**
+   ```bash
+   cd dashboard
+   pip3 install -r requirements.txt
+   ```
+
+2. **Start the dashboard server:**
+   ```bash
+   python3 app.py
+   ```
+   
+   Or run from project root:
+   ```bash
+   cd /path/to/linux-monitoring-alerts
+   python3 dashboard/app.py
+   ```
+
+3. **Access the dashboard:**
+   Open your browser and navigate to `http://localhost:8000`
+
+4. **Dashboard features:**
+   - View real-time system metrics (disk, RAM, load, uptime)
+   - Monitor service status with color-coded badges
+   - See active alerts with severity levels
+   - View historical trends with interactive charts
+   - Auto-refresh every 5 seconds (configurable)
+   - Click "Run Now" to trigger monitoring on-demand
+   - Click "Refresh" to manually update the display
+
+5. **API Endpoints:**
+   - `GET /api/latest` - Get the most recent report
+   - `GET /api/history?limit=20` - Get historical reports
+   - `POST /api/run` - Trigger monitor script and get results
+   - `GET /api/stats` - Get system statistics
+   - Full API documentation at `http://localhost:8000/docs`
 
 ### Manual Execution
 
@@ -282,6 +333,10 @@ The service is not installed on your system. Either:
 - Install the service: `sudo apt install nginx` (for Debian/Ubuntu)
 - Remove it from the configuration if not needed
 
+### Service Status Shows "unknown"
+
+This is normal in environments without systemd (containers, Codespaces). The monitoring system handles this gracefully and won't trigger false alerts.
+
 ### HTML Report Not Generated
 
 Ensure Python 3 is installed:
@@ -296,18 +351,52 @@ sudo apt install python3  # Debian/Ubuntu
 sudo yum install python3  # CentOS/RHEL
 ```
 
+### Dashboard Not Loading
+
+1. **Check Python dependencies:**
+   ```bash
+   cd dashboard
+   pip3 install -r requirements.txt
+   ```
+
+2. **Verify the server is running:**
+   ```bash
+   python3 dashboard/app.py
+   ```
+   Should show: `Uvicorn running on http://0.0.0.0:8000`
+
+3. **Check if port 8000 is in use:**
+   ```bash
+   lsof -i :8000
+   # Or try a different port
+   uvicorn dashboard.app:app --host 0.0.0.0 --port 8080
+   ```
+
+4. **Verify reports exist:**
+   ```bash
+   ls -lh output/
+   # Should show report_*.json files
+   # If empty, run: ./scripts/monitor.sh
+   ```
+
 ## File Structure
 
 ```
 linux-monitoring-alerts/
 ├── config/
 │   └── config.example.yml      # Configuration template
+├── dashboard/                   # Web dashboard (NEW!)
+│   ├── app.py                  # FastAPI backend server
+│   ├── requirements.txt        # Python dependencies
+│   └── static/
+│       └── index.html          # Dashboard frontend
 ├── output/                      # Generated reports (created automatically)
 │   ├── report_*.json
 │   └── report_*.html
 ├── scripts/
 │   ├── monitor.sh              # Main monitoring script
-│   └── generate_html_report.py # HTML report generator
+│   ├── generate_html_report.py # HTML report generator
+│   └── test_demo.sh            # Test/demo script
 ├── systemd/
 │   ├── linux-monitoring.service # Systemd service unit
 │   └── linux-monitoring.timer   # Systemd timer unit
