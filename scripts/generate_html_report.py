@@ -6,7 +6,7 @@ Converts JSON report to a simple HTML format
 
 import json
 import sys
-from datetime import datetime
+import html
 
 def generate_html_report(json_file, html_file):
     """Generate an HTML report from JSON data"""
@@ -22,6 +22,10 @@ def generate_html_report(json_file, html_file):
     services = data.get('services', [])
     alerts = data.get('alerts', [])
     
+    # Escape values for safe HTML insertion
+    hostname_escaped = html.escape(hostname)
+    timestamp_escaped = html.escape(timestamp)
+    
     # Determine overall status
     overall_status = "OK" if len(alerts) == 0 else "WARNING"
     
@@ -31,7 +35,7 @@ def generate_html_report(json_file, html_file):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Linux Monitoring Report - {hostname}</title>
+    <title>Linux Monitoring Report - {hostname_escaped}</title>
     <style>
         body {{
             font-family: Arial, sans-serif;
@@ -155,10 +159,10 @@ def generate_html_report(json_file, html_file):
 <body>
     <div class="header">
         <h1>Linux Monitoring Report</h1>
-        <p>Hostname: <strong>{hostname}</strong> 
+        <p>Hostname: <strong>{hostname_escaped}</strong> 
            <span class="status {overall_status.lower()}">{overall_status}</span>
         </p>
-        <p style="font-size: 14px; margin: 5px 0 0 0;">Generated: {timestamp}</p>
+        <p style="font-size: 14px; margin: 5px 0 0 0;">Generated: {timestamp_escaped}</p>
     </div>
 
     <div class="section">
@@ -212,10 +216,12 @@ def generate_html_report(json_file, html_file):
         for service in services:
             name = service.get('name', 'Unknown')
             status = service.get('status', 'unknown')
+            name_escaped = html.escape(name)
+            status_escaped = html.escape(status)
             html_content += f"""
         <div class="service">
-            <span class="service-name">{name}</span>
-            <span class="service-status {status}">{status.upper()}</span>
+            <span class="service-name">{name_escaped}</span>
+            <span class="service-status {status_escaped}">{status_escaped.upper()}</span>
         </div>
 """
     else:
@@ -236,10 +242,13 @@ def generate_html_report(json_file, html_file):
             severity = alert.get('severity', 'warning')
             alert_type = alert.get('type', 'unknown')
             message = alert.get('message', '')
+            severity_escaped = html.escape(severity)
+            alert_type_escaped = html.escape(alert_type)
+            message_escaped = html.escape(message)
             html_content += f"""
-        <div class="alert {severity}">
-            <div class="alert-type">{severity}: {alert_type}</div>
-            <div>{message}</div>
+        <div class="alert {severity_escaped}">
+            <div class="alert-type">{severity_escaped}: {alert_type_escaped}</div>
+            <div>{message_escaped}</div>
         </div>
 """
     else:

@@ -80,8 +80,8 @@ check_service_status() {
     local status="unknown"
     local active="unknown"
     
-    # Check if service unit file exists
-    if systemctl list-unit-files "${service}.service" 2>/dev/null | grep -q "${service}.service"; then
+    # Check if service unit file exists (avoid SIGPIPE with systemctl cat)
+    if systemctl cat "${service}.service" >/dev/null 2>&1; then
         if systemctl is-active --quiet "$service" 2>/dev/null; then
             active="active"
             status="running"
@@ -137,24 +137,6 @@ $alerts
 EOF
 }
 
-# Function to URL encode a string
-url_encode() {
-    local string="$1"
-    local strlen=${#string}
-    local encoded=""
-    local pos c o
-    
-    for (( pos=0 ; pos<strlen ; pos++ )); do
-        c=${string:$pos:1}
-        case "$c" in
-            [-_.~a-zA-Z0-9] ) o="${c}" ;;
-            * ) printf -v o '%%%02x' "'$c"
-        esac
-        encoded+="${o}"
-    done
-    echo "${encoded}"
-}
-
 # Function to send Telegram alert
 send_telegram_alert() {
     local message=$1
@@ -167,11 +149,10 @@ send_telegram_alert() {
     fi
     
     local url="https://api.telegram.org/bot${bot_token}/sendMessage"
-    local encoded_message=$(url_encode "$message")
     
     curl -s -X POST "$url" \
         -d "chat_id=${chat_id}" \
-        -d "text=${encoded_message}" \
+        --data-urlencode "text=${message}" \
         -d "parse_mode=HTML" > /dev/null || {
         echo "Warning: Failed to send Telegram alert" >&2
         return 1
