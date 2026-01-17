@@ -7,7 +7,12 @@ set -euo pipefail
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-CONFIG_FILE="${PROJECT_DIR}/config/config.example.yml"
+# Use config.yml if it exists, otherwise use config.example.yml
+if [[ -f "${PROJECT_DIR}/config/config.yml" ]]; then
+    CONFIG_FILE="${PROJECT_DIR}/config/config.yml"
+else
+    CONFIG_FILE="${PROJECT_DIR}/config/config.example.yml"
+fi
 OUTPUT_DIR="${PROJECT_DIR}/output"
 
 # Ensure output directory exists
@@ -75,8 +80,9 @@ check_service_status() {
     local status="unknown"
     local active="unknown"
     
-    if systemctl list-unit-files | grep -q "^${service}.service"; then
-        if systemctl is-active --quiet "$service"; then
+    # Check if service unit file exists
+    if systemctl list-unit-files "${service}.service" 2>/dev/null | grep -q "${service}.service"; then
+        if systemctl is-active --quiet "$service" 2>/dev/null; then
             active="active"
             status="running"
         else
