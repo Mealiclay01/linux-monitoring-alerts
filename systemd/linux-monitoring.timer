@@ -1,0 +1,15 @@
+[Unit]
+Description=Linux Monitoring and Alerting Timer
+Documentation=https://github.com/Mealiclay01/linux-monitoring-alerts
+Requires=linux-monitoring.service
+
+[Timer]
+# Run every 5 minutes
+OnBootSec=2min
+OnUnitActiveSec=5min
+
+# Ensure timer is persistent across reboots
+Persistent=true
+
+[Install]
+WantedBy=timers.target

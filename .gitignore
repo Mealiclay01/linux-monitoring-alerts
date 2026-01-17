@@ -205,3 +205,11 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Linux Monitoring Alerts - Generated Reports
+output/*.json
+output/*.html
+
+# Configuration with secrets (keep example only)
+config/config.yml
+config/*.env

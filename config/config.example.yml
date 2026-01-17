@@ -1,0 +1,22 @@
+# Configuration file for Linux Monitoring and Alerting Tool
+
+# Threshold configurations
+thresholds:
+  # Disk usage threshold in percentage
+  disk_usage: 80
+  
+  # RAM usage threshold in percentage
+  ram_usage: 85
+  
+  # Load average threshold (1-minute load average)
+  load_average: 4.0
+
+# Services to monitor (systemd services)
+services:
+  - ssh
+  - nginx
+  - mysql
+
+# Alert configuration (set via environment variables)
+# TELEGRAM_BOT_TOKEN: Your Telegram bot token
+# TELEGRAM_CHAT_ID: Your Telegram chat ID
