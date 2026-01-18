@@ -18,10 +18,16 @@ OUTPUT_DIR="${PROJECT_DIR}/output"
 # Ensure output directory exists
 mkdir -p "$OUTPUT_DIR"
 
-# Detect if systemd is available (check for systemd runtime directory)
+# Detect if systemd is available (do not rely only on /run/systemd/system)
 SYSTEMD_AVAILABLE=false
-if [[ -d "/run/systemd/system" ]]; then
-    SYSTEMD_AVAILABLE=true
+if command -v systemctl >/dev/null 2>&1; then
+    if ps -p 1 -o comm= | grep -qi systemd; then
+        SYSTEMD_AVAILABLE=true
+    elif systemctl is-system-running --quiet >/dev/null 2>&1; then
+        SYSTEMD_AVAILABLE=true
+    elif systemctl is-functional >/dev/null 2>&1; then
+        SYSTEMD_AVAILABLE=true
+    fi
 fi
 
 # Timestamp for report
@@ -83,13 +89,19 @@ collect_uptime() {
 # Function to escape strings for JSON
 json_escape() {
     local string="$1"
-    # Escape backslashes, quotes, and control characters
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c 'import json,sys; print(json.dumps(sys.argv[1])[1:-1])' "$string"
+        return
+    fi
+
     string="${string//\\/\\\\}"  # Escape backslashes
     string="${string//\"/\\\"}"  # Escape quotes
     string="${string//$'\n'/\\n}"  # Escape newlines
     string="${string//$'\r'/\\r}"  # Escape carriage returns
     string="${string//$'\t'/\\t}"  # Escape tabs
-    echo "$string"
+    string="${string//$'\b'/\\b}"  # Escape backspace
+    string="${string//$'\f'/\\f}"  # Escape form feed
+    printf '%s' "$string"
 }
 
 # Function to check systemd service status
@@ -97,11 +109,12 @@ check_service_status() {
     local service=$1
     local status="unknown"
     local active="unknown"
-    
+    local rc=0
+
     if [[ "$SYSTEMD_AVAILABLE" == "true" ]]; then
         # Use systemd when available (avoid SIGPIPE with systemctl cat)
         if systemctl cat "${service}.service" >/dev/null 2>&1; then
-            if systemctl is-active --quiet "$service" 2>/dev/null; then
+            if systemctl is-active --quiet "$service" >/dev/null 2>&1; then
                 active="active"
                 status="running"
             else
@@ -113,12 +126,60 @@ check_service_status() {
             active="not_installed"
         fi
     else
-        # When systemd is not available, mark services as unknown
-        # to avoid false alerts in containers/Codespaces
-        status="unknown"
-        active="unknown"
+        # Fallback checks for containers/Codespaces where systemd is unavailable
+        if [[ -x "/etc/init.d/${service}" ]]; then
+            if /etc/init.d/"$service" status >/dev/null 2>&1; then
+                status="running"
+                active="active"
+            else
+                rc=$?
+                case "$rc" in
+                    3)
+                        status="stopped"
+                        active="inactive"
+                        ;;
+                    4)
+                        status="not_installed"
+                        active="not_installed"
+                        ;;
+                    *)
+                        status="unknown"
+                        active="unknown"
+                        ;;
+                esac
+            fi
+        elif command -v service >/dev/null 2>&1; then
+            if service "$service" status >/dev/null 2>&1; then
+                status="running"
+                active="active"
+            else
+                rc=$?
+                case "$rc" in
+                    3)
+                        status="stopped"
+                        active="inactive"
+                        ;;
+                    4)
+                        status="not_installed"
+                        active="not_installed"
+                        ;;
+                    *)
+                        status="unknown"
+                        active="unknown"
+                        ;;
+                esac
+            fi
+        elif command -v pgrep >/dev/null 2>&1; then
+            if pgrep -x "$service" >/dev/null 2>&1; then
+                status="running"
+                active="active"
+            else
+                status="unknown"
+                active="unknown"
+            fi
+        fi
     fi
-    
+
     echo "${status}|${active}"
 }
 
@@ -213,12 +274,16 @@ main() {
     
     # Check services
     echo "Checking services..."
+    declare -A SERVICE_STATUS
+    declare -A SERVICE_ACTIVE
     services_json=""
     first_service=true
     for service in $SERVICES_LIST; do
         service_info=$(check_service_status "$service")
         status=$(echo "$service_info" | cut -d'|' -f1)
         active=$(echo "$service_info" | cut -d'|' -f2)
+        SERVICE_STATUS["$service"]="$status"
+        SERVICE_ACTIVE["$service"]="$active"
         
         if [ "$first_service" = true ]; then
             first_service=false
@@ -247,6 +312,7 @@ main() {
     
     if (( DISK_USAGE > DISK_THRESHOLD )); then
         alert_msg="⚠️ ALERT: Disk usage at ${DISK_USAGE}% (threshold: ${DISK_THRESHOLD}%)"
+        alert_message_escaped=$(json_escape "Disk usage at ${DISK_USAGE}% exceeds threshold of ${DISK_THRESHOLD}%")
         echo "$alert_msg"
         alert_messages+=("$alert_msg")
         
@@ -259,12 +325,13 @@ main() {
     {
       \"type\": \"disk_usage\",
       \"severity\": \"warning\",
-      \"message\": \"Disk usage at ${DISK_USAGE}% exceeds threshold of ${DISK_THRESHOLD}%\"
+      \"message\": \"$alert_message_escaped\"
     }"
     fi
     
     if (( RAM_USAGE > RAM_THRESHOLD )); then
         alert_msg="⚠️ ALERT: RAM usage at ${RAM_USAGE}% (threshold: ${RAM_THRESHOLD}%)"
+        alert_message_escaped=$(json_escape "RAM usage at ${RAM_USAGE}% exceeds threshold of ${RAM_THRESHOLD}%")
         echo "$alert_msg"
         alert_messages+=("$alert_msg")
         
@@ -277,7 +344,7 @@ main() {
     {
       \"type\": \"ram_usage\",
       \"severity\": \"warning\",
-      \"message\": \"RAM usage at ${RAM_USAGE}% exceeds threshold of ${RAM_THRESHOLD}%\"
+      \"message\": \"$alert_message_escaped\"
     }"
     fi
     
@@ -285,6 +352,7 @@ main() {
     load_exceeds=$(awk -v loadval="$LOAD_AVG" -v threshold="$LOAD_THRESHOLD" 'BEGIN {print (loadval > threshold)}')
     if [[ "$load_exceeds" == "1" ]]; then
         alert_msg="⚠️ ALERT: Load average at ${LOAD_AVG} (threshold: ${LOAD_THRESHOLD})"
+        alert_message_escaped=$(json_escape "Load average at ${LOAD_AVG} exceeds threshold of ${LOAD_THRESHOLD}")
         echo "$alert_msg"
         alert_messages+=("$alert_msg")
         
@@ -297,14 +365,13 @@ main() {
     {
       \"type\": \"load_average\",
       \"severity\": \"warning\",
-      \"message\": \"Load average at ${LOAD_AVG} exceeds threshold of ${LOAD_THRESHOLD}\"
+      \"message\": \"$alert_message_escaped\"
     }"
     fi
     
     # Check for stopped services (skip unknown and not_installed)
     for service in $SERVICES_LIST; do
-        service_info=$(check_service_status "$service")
-        status=$(echo "$service_info" | cut -d'|' -f1)
+        status="${SERVICE_STATUS[$service]}"
         
         # Only alert for stopped services, skip unknown (no systemd) and not_installed
         if [[ "$status" == "stopped" ]]; then
@@ -314,6 +381,7 @@ main() {
             
             # Escape service name for JSON
             local service_escaped=$(json_escape "$service")
+            local alert_message_escaped=$(json_escape "Service $service is $status")
             
             if [ "$first_alert" = true ]; then
                 first_alert=false
@@ -324,7 +392,7 @@ main() {
     {
       \"type\": \"service_down\",
       \"severity\": \"critical\",
-      \"message\": \"Service $service is $status\",
+      \"message\": \"$alert_message_escaped\",
       \"service\": \"$service_escaped\"
     }"
         fi
@@ -334,6 +402,13 @@ main() {
     echo "Generating JSON report..."
     generate_json_report "$DISK_USAGE" "$RAM_USAGE" "$LOAD_AVG" "$UPTIME_INFO" "$services_json" "$alerts"
     echo "JSON report saved to: $JSON_REPORT"
+
+    if command -v python3 >/dev/null 2>&1; then
+        if ! python3 -c "import json; json.load(open('$JSON_REPORT'))" >/dev/null 2>&1; then
+            echo "Error: JSON report validation failed for $JSON_REPORT" >&2
+            exit 1
+        fi
+    fi
     
     # Generate HTML report
     if command -v python3 &> /dev/null; then

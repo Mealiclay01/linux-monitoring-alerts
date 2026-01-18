@@ -13,10 +13,11 @@ A comprehensive Linux server monitoring and alerting tool built with Bash script
 - **Service Monitoring**
   - Monitor systemd services (SSH, Nginx, MySQL, etc.)
   - Configurable service list
-  - Graceful handling when systemd is unavailable (containers/Codespaces)
+  - Robust detection when systemd is unavailable (containers/Codespaces)
+  - Falls back to SysV `service`/`/etc/init.d` checks or `pgrep` heuristics
   
 - **Web Dashboard** 🎨 **NEW!**
-  - Modern, responsive UI with dark mode
+  - Modern, responsive UI with dark mode toggle
   - Real-time metrics display
   - Service status with color-coded badges
   - Alert monitoring with severity levels
@@ -82,19 +83,21 @@ services:
 
 ### 3. Set Up Telegram Bot (Optional)
 
-To receive alerts via Telegram:
+To receive alerts via Telegram, follow the detailed guide in [docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md).
+
+Quick summary:
 
 1. Create a Telegram bot using [@BotFather](https://t.me/botfather)
 2. Get your bot token
 3. Get your chat ID (use [@userinfobot](https://t.me/userinfobot))
-4. Set environment variables:
+4. Set environment variables or a systemd `EnvironmentFile`:
 
 ```bash
 export TELEGRAM_BOT_TOKEN="your_bot_token_here"
 export TELEGRAM_CHAT_ID="your_chat_id_here"
 ```
 
-For persistent configuration, add these to `/etc/environment` or create a systemd environment file.
+For persistent configuration, add these to `/etc/environment` or create a systemd environment file. The script will warn and continue if credentials are missing.
 
 ### 4. Install Systemd Service (Optional)
 
@@ -165,6 +168,18 @@ The easiest way to monitor your system is through the web dashboard:
    - `GET /api/stats` - Get system statistics
    - Full API documentation at `http://localhost:8000/docs`
 
+> **Tip:** If no reports exist yet, the dashboard will show a helpful message. Run `./scripts/monitor.sh` once (or use **Run Now**) to generate data.
+
+### Containers/Codespaces Behavior
+
+When systemd is not PID 1 (common in containers/Codespaces), the script:
+
+- Detects that systemd is unavailable using PID 1 and `systemctl` health checks.
+- Falls back to `/etc/init.d/<service>` or `service <service> status` when available.
+- Uses `pgrep` as a heuristic if no init system is present.
+- Reports status as `unknown` if it cannot confidently determine service state.
+- Avoids emitting service-down alerts unless the service is confidently stopped.
+
 ### Manual Execution
 
 Run the monitoring script manually:
@@ -201,7 +216,7 @@ Example JSON report:
 
 ```json
 {
-  "timestamp": "2026-01-17T05:30:00+00:00",
+  "timestamp": "2024-01-01T00:00:00+00:00",
   "hostname": "server01",
   "metrics": {
     "disk_usage": {
