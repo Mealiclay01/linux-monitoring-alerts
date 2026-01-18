@@ -38,7 +38,7 @@ app = FastAPI(
 # NOTE: In production, restrict origins to specific domains
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TODO: Change to specific origins in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -81,7 +81,10 @@ async def get_latest_report():
     reports = get_report_files()
     
     if not reports:
-        raise HTTPException(status_code=404, detail="No reports found")
+        return JSONResponse(
+            status_code=200,
+            content={"message": "No reports found. Run the monitor to generate one.", "available": False}
+        )
     
     latest_report = read_report(reports[0])
     
@@ -168,6 +171,7 @@ async def run_monitor():
         # Get the latest report file
         reports = get_report_files()
         latest_filename = reports[0].name if reports else None
+        latest_report = read_report(reports[0]) if reports else None
         
         return {
             "success": process.returncode == 0,
@@ -175,6 +179,7 @@ async def run_monitor():
             "stdout": stdout_text[-MAX_STDOUT_CHARS:] if len(stdout_text) > MAX_STDOUT_CHARS else stdout_text,
             "stderr": stderr_text[-MAX_STDERR_CHARS:] if len(stderr_text) > MAX_STDERR_CHARS else stderr_text,
             "latest_report": latest_filename,
+            "report": latest_report,
             "timestamp": datetime.now().isoformat()
         }
         

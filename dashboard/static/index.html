@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Linux Monitoring Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         * {
             margin: 0;
@@ -23,6 +24,21 @@
             --error: #ef4444;
             --info: #3b82f6;
             --spacing: 1.5rem;
+            --shadow: 0 12px 32px rgba(15, 23, 42, 0.35);
+        }
+
+        [data-theme="light"] {
+            --bg-primary: #f8fafc;
+            --bg-secondary: #ffffff;
+            --bg-card: #f1f5f9;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --border-color: #e2e8f0;
+            --success: #16a34a;
+            --warning: #d97706;
+            --error: #dc2626;
+            --info: #2563eb;
+            --shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
         }
 
         body {
@@ -48,6 +64,7 @@
             align-items: center;
             flex-wrap: wrap;
             gap: 1rem;
+            box-shadow: var(--shadow);
         }
 
         h1 {
@@ -127,6 +144,7 @@
             border-radius: 8px;
             padding: var(--spacing);
             border: 1px solid var(--border-color);
+            box-shadow: var(--shadow);
         }
 
         .card-title {
@@ -281,34 +299,6 @@
             padding: 1rem;
         }
 
-        .simple-chart {
-            width: 100%;
-            height: 100%;
-        }
-
-        .chart-line {
-            fill: none;
-            stroke-width: 2;
-        }
-
-        .chart-area {
-            opacity: 0.2;
-        }
-
-        .chart-point {
-            r: 4;
-        }
-
-        .chart-axis {
-            stroke: var(--border-color);
-            stroke-width: 1;
-        }
-
-        .chart-label {
-            fill: var(--text-secondary);
-            font-size: 12px;
-        }
-
         .section {
             margin-bottom: calc(var(--spacing) * 2);
         }
@@ -378,6 +368,9 @@
                 </div>
             </div>
             <div class="header-actions">
+                <button class="btn-secondary" onclick="toggleTheme()" id="themeToggle">
+                    <span>🌙</span> Dark Mode
+                </button>
                 <button class="btn-primary" onclick="runMonitorNow()" id="runBtn">
                     <span>▶</span> Run Now
                 </button>
@@ -422,22 +415,22 @@
                     <span>📊</span> Historical Trends
                 </h2>
                 <div class="grid">
-                    <div class="card">
-                        <div class="card-title">Disk Usage Over Time</div>
-                        <div class="chart-container">
-                            <svg id="diskChart" class="simple-chart"></svg>
+                        <div class="card">
+                            <div class="card-title">Disk Usage Over Time</div>
+                            <div class="chart-container">
+                            <canvas id="diskChart"></canvas>
+                            </div>
                         </div>
-                    </div>
                     <div class="card">
                         <div class="card-title">RAM Usage Over Time</div>
                         <div class="chart-container">
-                            <svg id="ramChart" class="simple-chart"></svg>
+                            <canvas id="ramChart"></canvas>
                         </div>
                     </div>
                     <div class="card">
                         <div class="card-title">Load Average Over Time</div>
                         <div class="chart-container">
-                            <svg id="loadChart" class="simple-chart"></svg>
+                            <canvas id="loadChart"></canvas>
                         </div>
                     </div>
                 </div>
@@ -450,128 +443,79 @@
         let countdownInterval;
         let nextRefreshTime = Date.now() + 5000;
         const REFRESH_INTERVAL = 5000; // 5 seconds
+        const charts = {};
+        let lastHistory = [];
 
-        // Simple SVG chart renderer
-        function createSVGChart(svgId, data, labels, color, maxValue = null) {
-            const svg = document.getElementById(svgId);
-            if (!svg || !data || data.length === 0 || !labels || labels.length === 0) return;
-            if (data.length !== labels.length) {
-                console.warn('Data and labels length mismatch for chart:', svgId);
-                return;
-            }
+        function getThemeColors() {
+            const styles = getComputedStyle(document.documentElement);
+            return {
+                text: styles.getPropertyValue('--text-secondary').trim(),
+                grid: styles.getPropertyValue('--border-color').trim(),
+                disk: styles.getPropertyValue('--warning').trim(),
+                ram: styles.getPropertyValue('--info').trim(),
+                load: styles.getPropertyValue('--success').trim()
+            };
+        }
 
-            const width = svg.clientWidth || 600;
-            const height = svg.clientHeight || 250;
-            const padding = { top: 20, right: 20, bottom: 40, left: 50 };
-            const chartWidth = width - padding.left - padding.right;
-            const chartHeight = height - padding.top - padding.bottom;
+        function renderLineChart(canvasId, label, labels, data, color, maxValue = null) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
 
-            // Clear previous content
-            svg.innerHTML = '';
-            svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+            const ctx = canvas.getContext('2d');
+            const colors = getThemeColors();
+            const chartData = {
+                labels,
+                datasets: [{
+                    label,
+                    data,
+                    borderColor: color,
+                    backgroundColor: color + '33',
+                    tension: 0.35,
+                    pointRadius: 3,
+                    pointBackgroundColor: color,
+                    fill: true
+                }]
+            };
 
-            // Find max value
-            const max = maxValue || Math.max(...data, 1);
-            const min = 0;
-
-            // Create points
-            const points = data.map((val, i) => {
-                const x = padding.left + (i / (data.length - 1 || 1)) * chartWidth;
-                const y = padding.top + chartHeight - ((val - min) / (max - min)) * chartHeight;
-                return { x, y, val };
-            });
-
-            // Create gradient area path
-            const areaPath = `
-                M ${points[0].x} ${padding.top + chartHeight}
-                ${points.map(p => `L ${p.x} ${p.y}`).join(' ')}
-                L ${points[points.length - 1].x} ${padding.top + chartHeight}
-                Z
-            `;
-
-            // Create line path
-            const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-
-            // Draw gradient area
-            const area = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            area.setAttribute('d', areaPath);
-            area.setAttribute('fill', color);
-            area.setAttribute('class', 'chart-area');
-            svg.appendChild(area);
-
-            // Draw line
-            const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            line.setAttribute('d', linePath);
-            line.setAttribute('stroke', color);
-            line.setAttribute('class', 'chart-line');
-            svg.appendChild(line);
-
-            // Draw points
-            points.forEach((p, i) => {
-                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-                circle.setAttribute('cx', p.x);
-                circle.setAttribute('cy', p.y);
-                circle.setAttribute('fill', color);
-                circle.setAttribute('class', 'chart-point');
-                svg.appendChild(circle);
-
-                // Add hover title
-                const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-                title.textContent = `${labels[i]}: ${p.val.toFixed(2)}`;
-                circle.appendChild(title);
-            });
-
-            // Draw Y axis
-            const yAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            yAxis.setAttribute('x1', padding.left);
-            yAxis.setAttribute('y1', padding.top);
-            yAxis.setAttribute('x2', padding.left);
-            yAxis.setAttribute('y2', padding.top + chartHeight);
-            yAxis.setAttribute('class', 'chart-axis');
-            svg.appendChild(yAxis);
-
-            // Draw X axis
-            const xAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            xAxis.setAttribute('x1', padding.left);
-            xAxis.setAttribute('y1', padding.top + chartHeight);
-            xAxis.setAttribute('x2', padding.left + chartWidth);
-            xAxis.setAttribute('y2', padding.top + chartHeight);
-            xAxis.setAttribute('class', 'chart-axis');
-            svg.appendChild(xAxis);
-
-            // Add Y axis labels
-            for (let i = 0; i <= 4; i++) {
-                const val = min + (max - min) * (i / 4);
-                const y = padding.top + chartHeight - (i / 4) * chartHeight;
-                
-                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                text.setAttribute('x', padding.left - 10);
-                text.setAttribute('y', y + 4);
-                text.setAttribute('text-anchor', 'end');
-                text.setAttribute('class', 'chart-label');
-                text.textContent = val.toFixed(1);
-                svg.appendChild(text);
-            }
-
-            // Add X axis labels (show every nth label to avoid crowding)
-            const labelStep = Math.max(1, Math.floor(labels.length / 6));
-            labels.forEach((label, i) => {
-                if (i % labelStep === 0 || i === labels.length - 1) {
-                    const x = points[i].x;
-                    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                    text.setAttribute('x', x);
-                    text.setAttribute('y', padding.top + chartHeight + 20);
-                    text.setAttribute('text-anchor', 'middle');
-                    text.setAttribute('class', 'chart-label');
-                    text.setAttribute('transform', `rotate(-45, ${x}, ${padding.top + chartHeight + 20})`);
-                    text.textContent = label;
-                    svg.appendChild(text);
+            const options = {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        suggestedMax: maxValue || undefined,
+                        ticks: { color: colors.text },
+                        grid: { color: colors.grid }
+                    },
+                    x: {
+                        ticks: { color: colors.text },
+                        grid: { color: colors.grid }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false
+                    }
                 }
-            });
+            };
+
+            if (charts[canvasId]) {
+                charts[canvasId].data = chartData;
+                charts[canvasId].options = options;
+                charts[canvasId].update();
+            } else {
+                charts[canvasId] = new Chart(ctx, { type: 'line', data: chartData, options });
+            }
         }
 
         function updateCharts(history) {
             if (!history || history.length === 0) return;
+
+            lastHistory = history;
 
             // Sort by timestamp (oldest first for chart)
             const sorted = [...history].reverse();
@@ -586,10 +530,10 @@
             const ramData = sorted.map(r => r.metrics?.ram_usage?.value || 0);
             const loadData = sorted.map(r => r.metrics?.load_average?.['1min'] || 0);
 
-            // Update charts
-            createSVGChart('diskChart', diskData, labels, '#f59e0b', 100);
-            createSVGChart('ramChart', ramData, labels, '#3b82f6', 100);
-            createSVGChart('loadChart', loadData, labels, '#22c55e');
+            const colors = getThemeColors();
+            renderLineChart('diskChart', 'Disk Usage (%)', labels, diskData, colors.disk, 100);
+            renderLineChart('ramChart', 'RAM Usage (%)', labels, ramData, colors.ram, 100);
+            renderLineChart('loadChart', 'Load Average', labels, loadData, colors.load);
         }
 
         function getStatusBadge(status) {
@@ -690,11 +634,25 @@
             document.getElementById('alertsList').innerHTML = html;
         }
 
+        function showEmptyState(message) {
+            document.getElementById('loading').innerHTML = `<p style="color: var(--text-secondary);">${message}</p>`;
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('content').style.display = 'none';
+        }
+
         async function loadLatestData() {
             try {
                 const response = await fetch('/api/latest');
-                if (!response.ok) throw new Error('Failed to fetch latest data');
                 const data = await response.json();
+
+                if (data && data.available === false) {
+                    showEmptyState(data.message || 'No reports available yet.');
+                    return null;
+                }
+
+                if (!response.ok) {
+                    throw new Error('Failed to fetch latest data');
+                }
 
                 renderMetrics(data);
                 renderServices(data.services);
@@ -702,6 +660,7 @@
 
                 const date = new Date(data.timestamp);
                 document.getElementById('lastUpdated').textContent = `Last updated: ${date.toLocaleString()}`;
+                document.getElementById('content').style.display = 'block';
                 
                 return data;
             } catch (error) {
@@ -776,6 +735,26 @@
             nextRefreshTime = Date.now() + REFRESH_INTERVAL;
         }
 
+        function applyTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            const toggle = document.getElementById('themeToggle');
+            if (theme === 'light') {
+                toggle.innerHTML = '<span>☀️</span> Light Mode';
+            } else {
+                toggle.innerHTML = '<span>🌙</span> Dark Mode';
+            }
+            if (lastHistory.length) {
+                updateCharts(lastHistory);
+            }
+        }
+
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme') || 'dark';
+            const next = current === 'dark' ? 'light' : 'dark';
+            localStorage.setItem('dashboardTheme', next);
+            applyTheme(next);
+        }
+
         function startAutoRefresh() {
             // Clear any existing intervals
             if (autoRefreshInterval) clearInterval(autoRefreshInterval);
@@ -793,11 +772,17 @@
         // Initialize on page load
         async function init() {
             try {
-                await refreshData();
-                
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('content').style.display = 'block';
-                
+                const savedTheme = localStorage.getItem('dashboardTheme') || 'dark';
+                applyTheme(savedTheme);
+
+                const latest = await loadLatestData();
+                await loadHistory();
+
+                if (latest) {
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('content').style.display = 'block';
+                }
+
                 startAutoRefresh();
             } catch (error) {
                 console.error('Initialization error:', error);

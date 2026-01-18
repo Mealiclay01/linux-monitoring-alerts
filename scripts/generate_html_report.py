@@ -8,12 +8,77 @@ import json
 import sys
 import html
 
+SERVICE_STATUS_CLASS = {
+    "running": "running",
+    "stopped": "stopped",
+    "not_installed": "not_installed",
+    "unknown": "unknown",
+}
+
+ALERT_SEVERITY_CLASS = {
+    "warning": "warning",
+    "critical": "critical",
+}
+
+
+def render_error_page(error_message: str) -> str:
+    safe_message = html.escape(error_message)
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Linux Monitoring Report - Error</title>
+    <style>
+        body {{
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px;
+            background-color: #f5f5f5;
+        }}
+        .card {{
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+        h1 {{
+            margin-top: 0;
+        }}
+        .error {{
+            color: #b91c1c;
+            font-weight: bold;
+        }}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Linux Monitoring Report</h1>
+        <p class="error">Unable to load JSON report.</p>
+        <p>{safe_message}</p>
+        <p>Please re-run the monitoring script to regenerate the report.</p>
+    </div>
+</body>
+</html>
+"""
+
+
 def generate_html_report(json_file, html_file):
     """Generate an HTML report from JSON data"""
-    
-    # Read JSON report
-    with open(json_file, 'r') as f:
-        data = json.load(f)
+    try:
+        with open(json_file, 'r') as f:
+            data = json.load(f)
+    except json.JSONDecodeError as exc:
+        with open(html_file, 'w') as f:
+            f.write(render_error_page(f"JSON decode error: {exc}"))
+        print(f"HTML report generated with error details: {html_file}")
+        return
+    except OSError as exc:
+        with open(html_file, 'w') as f:
+            f.write(render_error_page(f"Failed to read report: {exc}"))
+        print(f"HTML report generated with error details: {html_file}")
+        return
     
     # Extract data
     timestamp = data.get('timestamp', '')
@@ -127,6 +192,10 @@ def generate_html_report(json_file, html_file):
             background-color: #999;
             color: white;
         }}
+        .service-status.unknown {{
+            background-color: #64748b;
+            color: white;
+        }}
         .alert {{
             padding: 15px;
             margin: 10px 0;
@@ -171,10 +240,11 @@ def generate_html_report(json_file, html_file):
     
     # Add disk usage
     disk_usage = metrics.get('disk_usage', {})
+    filesystem = html.escape(str(disk_usage.get('filesystem', '/')))
     html_content += f"""
         <div class="metric">
-            <span class="metric-name">Disk Usage ({disk_usage.get('filesystem', '/')})</span>
-            <span class="metric-value">{disk_usage.get('value', 'N/A')}%</span>
+            <span class="metric-name">Disk Usage ({filesystem})</span>
+            <span class="metric-value">{html.escape(str(disk_usage.get('value', 'N/A')))}%</span>
         </div>
 """
     
@@ -183,7 +253,7 @@ def generate_html_report(json_file, html_file):
     html_content += f"""
         <div class="metric">
             <span class="metric-name">RAM Usage</span>
-            <span class="metric-value">{ram_usage.get('value', 'N/A')}%</span>
+            <span class="metric-value">{html.escape(str(ram_usage.get('value', 'N/A')))}%</span>
         </div>
 """
     
@@ -192,7 +262,7 @@ def generate_html_report(json_file, html_file):
     html_content += f"""
         <div class="metric">
             <span class="metric-name">Load Average (1 min)</span>
-            <span class="metric-value">{load_avg.get('1min', 'N/A')}</span>
+            <span class="metric-value">{html.escape(str(load_avg.get('1min', 'N/A')))}</span>
         </div>
 """
     
@@ -201,7 +271,7 @@ def generate_html_report(json_file, html_file):
     html_content += f"""
         <div class="metric">
             <span class="metric-name">Uptime</span>
-            <span class="metric-value">{uptime.get('value', 'N/A')}</span>
+            <span class="metric-value">{html.escape(str(uptime.get('value', 'N/A')))}</span>
         </div>
     </div>
 """
@@ -216,12 +286,14 @@ def generate_html_report(json_file, html_file):
         for service in services:
             name = service.get('name', 'Unknown')
             status = service.get('status', 'unknown')
-            name_escaped = html.escape(name)
-            status_escaped = html.escape(status)
+            name_escaped = html.escape(str(name))
+            status_value = status if status in SERVICE_STATUS_CLASS else "unknown"
+            status_class = SERVICE_STATUS_CLASS.get(status_value, "unknown")
+            status_escaped = html.escape(str(status_value))
             html_content += f"""
         <div class="service">
             <span class="service-name">{name_escaped}</span>
-            <span class="service-status {status}">{status_escaped.upper()}</span>
+            <span class="service-status {status_class}">{status_escaped.upper()}</span>
         </div>
 """
     else:
@@ -242,11 +314,13 @@ def generate_html_report(json_file, html_file):
             severity = alert.get('severity', 'warning')
             alert_type = alert.get('type', 'unknown')
             message = alert.get('message', '')
-            severity_escaped = html.escape(severity)
-            alert_type_escaped = html.escape(alert_type)
-            message_escaped = html.escape(message)
+            severity_value = severity if severity in ALERT_SEVERITY_CLASS else "warning"
+            severity_class = ALERT_SEVERITY_CLASS.get(severity_value, "warning")
+            severity_escaped = html.escape(severity_value)
+            alert_type_escaped = html.escape(str(alert_type))
+            message_escaped = html.escape(str(message))
             html_content += f"""
-        <div class="alert {severity}">
+        <div class="alert {severity_class}">
             <div class="alert-type">{severity_escaped}: {alert_type_escaped}</div>
             <div>{message_escaped}</div>
         </div>
